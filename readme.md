@@ -48,7 +48,7 @@ Clone the source repository from https://github.com/Microsoft/SmartHotel360-AKS-
 1. Take a note of the output. We will require this details later.
 
 ### **Provision the Azure Resources** :
-In this step you'll create all of the Azure resources required by the demo. This consists of an AKS Cluster and an Azure Container Registry (ACR) instance. The AKS Cluster is pre-configured to use Microsoft Operations Management Suite (OMS) and Log Analytics to enable the rich Container Health Dashboard capabilities.
+In this step you'll create all of the Azure resources required for this lab. This consists of an AKS Cluster and an Azure Container Registry (ACR) instance. The AKS Cluster is pre-configured to use Microsoft Operations Management Suite (OMS) and Log Analytics to enable the rich Container Health Dashboard capabilities.
 
 1. Install the**Azure Dev Spaces** preview extension for the Azure CLI by entering the following command in the terminal.
 
@@ -244,12 +244,189 @@ Then they're readily available in the **Saved Queries** folder in the Query Expl
 ![Running the query](images/savedqueries.png)
 
 
-## Exercise 5: Using AKS and Azure Dev Spaces to make development and debugging apps easier
+## Exercise 5: Using AKS and Azure Dev Spaces to make developing and debugging apps easier
 
  Now the **SmartHotel360** web app is setup with back-end APIs deployed to AKS kubernetes cluster. In this exercise we will see how [Azure Dev Spaces](https://docs.microsoft.com/en-us/azure/dev-spaces/azure-dev-spaces) helps development teams be more productive on Kubernetes.
 
- Azure Dev Spaces provides a rapid, iterative Kubernetes development experience for teams. With minimal dev machine setup, you can iteratively run and debug containers directly in Azure Kubernetes Service (AKS). Develop on Windows, Mac, or Linux using familiar tools like Visual Studio, Visual Studio Code, or the command line. 
+ **Azure Dev Spaces**  enable developers to get up and running, debugging their code directly in the AKS cluster, without the need to configure any environments locally or to need to replicate an AKS cluster and everything in it. Azure Dev Spaces enables a more productive development and debugging process by enabling in-container debugging, within a cluster.  
 
  {% include important.html content= "Azure Dev Spaces is in currently in preview, and is supported only by AKS clusters in the **East US, West Europe,** and **Canada East** regions. Previews are made available to you on the condition that you agree to the supplemental terms of use. Some aspects of this feature may change prior to general availability (GA)." %}
 
-1. 
+1. Open the public web site in a browser. It should be in the format http://sh360.sh360.guid.region.aksapp.io.
+
+1. Search for **New** using the city search feature on the public web site. The phrase **New** returns some matches as shown below.
+
+     ![](images/searchnew.png)
+
+1. Similarly search for **Sea** or **Seattle**. You could see no results are found. You know that we have hotels in **Seattle**. So this is a Bug.
+
+     ![](images/searchSeattle.png)
+
+## Debugging Scenario
+  Let's assume that you are a new developer working for SmartHotel360, who has been assigned above bug to fix in a huge AKS cluster with a variety of microservices written in Node.js. .NET Core, and Java. And you are armed with a few pre-written queries (Saved queries in Exercise 4) to see logs and CPU usage, and a short description of a defect in the company's web site. Let us see how AKS and Azure DevSpaces will help you to debug, find and fix the issue.
+
+  1. Navigate to the Azure portal and open the deployed AKS overview page.
+     
+       ![](images/aksoverview.png)
+
+     
+     The **AKS Overview** page gives you a quick snapshot of how the cluster's operating. 
+     
+   1. Click **Monitor container Health** link in the portal. The **AKS Health Dashboard** gives a holistic snapshot of all the services running in the AKS cluster. At a glance, you can see that there are a lot of microservices running in there.
+
+      ![](images/AksHealthDashboard.png)
+
+   1. Click the **Containers** navigation item in the toolbar to switch to **Container view**.  
+        
+        ![](images/ContainersView.png)
+
+   1. Assume that you have been told  the production code is running in the **default** namespace. To look at the containers in the **default** namespace, select **default** from the namespace menu and select **hotels** from the service menu.
+
+        ![](images/SelectNamespace.png)
+
+   1. Click on the **View Logs** link for the **Hotels** service.
+
+        ![](images/ClickViewLogs.png)
+
+      AKS gives you the ability to drill right in on a specific container running in production right from within the Azure portal. Now you can view the logs for that specific container.
+
+   1. Wait for the default query to run. If no results are shown in the results pane, increase the parameter for the `ago` method to a greater duration, like `ago(24)` for the past 24 hours of log data.
+        
+         ![](images/ViewLogs.png)
+
+      You can see the logs for a specific microservice in the portal.
+
+   1. Expand one of the **City search returned 0 results** log entries. 
+
+       ![](images/CitySearch0results.png)
+
+      These log entries are a good clue providing evidence that this is where the bug's happening, You can get even deeper. Other log entries in the view shows you which ASP.NET MVC Controller are dropping in those **0 results** log entries.
+
+   1. Expand one of the `CitiesController` log entries.
+     
+      ![](images/citiesControllerlog.png)
+
+      You can see from the Log Search that the exact class performing the logging is the `CitiesController` class. Now you know where to look in the source code.
+
+  1. Expand the **Saved Queries** in the **Query Explorer** in the Azure portal, select the **CPU over time** query and click **Run**.
+       
+        ![](images/CPUOverTime.png)
+
+      The query results with a time chart showing the CPU utilization of the container over a time slice.
+
+   1. Select the **Logs** query, click **Run**. This query shows the logs with the **returned 0 results** string, which you've already identified as the source of the bug.
+      
+       ![](images/LogsQuery.png)
+
+
+   1. Open `SmartHotel.Services.Hotels` solution in Visual Studio.
+    
+       ![](images/11-vs-solution-open.png)
+
+
+    
+
+1. Hit `Ctrl-T` to open the Visual Studio `Go to all` search pane.  Type `CitiesController`. Find the `CitiesController` class and click on it. 
+    
+    ![Searching for a type](images/12-vs-ctrl-t-to-search.png)
+
+    In the `CitiesController` class take a look at the `Get` method to see if you can find what's wrong. Looks like the previous developer is making two calls to the `GetDefaultCities` method here.
+
+1. Right-click the `GetDefaultCities` method and select `Go to Definition`. 
+
+    ![Go to definition](images/13-get-method.png)
+
+    
+1. Scroll up to show the `Get` method. 
+    
+    ![The Get method](images/14-both-methods.png)
+
+    Looks like the `GetDefaultCities` method returns a static list. The list doesn't contain Seattle, so that explains why it isn't showing up. If you look up above this method, you can see that the `Get` method is the one that actually uses Entity Framework to query the database. 
+    
+1. Find the line of code in `CitiesController` using the `Where` method:
+
+    ```csharp
+    _citiesQuery.GetDefaultCities().Result
+        .Where(city => city.Name.StartsWith(name));
+    ```
+
+1. Change the code to match this:
+
+    ```csharp
+    await _citiesQuery.Get(name);
+    ```
+
+    ![Get method](images/15-fixed-code.png)
+
+    Now that you've got the code edited, debug it to make sure it works. 
+
+1. Add a breakpoint on the `return Ok(cities);` line of code in `citiesController` class.
+
+    ![Add breakpoint](images/22-breakpoint.png)
+
+    > You are ready to try this out, but you would need to set up all the databases, services, all of it, or at least get a copy of the AKS cluster on your machine or somewhere else so that it won't impact production - or teammates. 
+
+    > This could take hours, or days, to set up and get working properly. You don't want to spend two weeks building a copy of the production environment. 
+
+    > This is where **Azure Dev Spaces** helps you. Without setting up anything, you can select Dev Spaces to use when you want to debug your code. Then, a copy of your service is deployed into AKS, and commands will be routed to that copy of the service. That way, you can debug your code changes **in your own space** without impacting either the production environment **or** your teammates, all of whom may have code running in their own Dev Spaces. 
+   
+
+1. Right click the `SmartHotel.Services.Hotels` Visual Studio project. Select **Properties**.
+    ![Right-click VS Project](images/16-right-click-props.png)
+    
+
+1. Select **Debug** in the left navigation. 
+1. Select **Azure Dev Spaces** from the Profile menu. 
+
+    ![Selecting Dev Spaces](images/17-select-dev-spaces.png)
+
+    > Here you'll specify that you want to use Azure Dev Spaces as your debugging target. Next, you'll create your own space for your code to run in during your debugging session. 
+
+1. Select the AKS Cluster you want to use. Select **Create New Space** from the Space menu. 
+
+    ![Create a new Space](images/18-create-new-space.png)
+
+     When you hit F5 your code will run in AKS in your own Dev Space. 
+    
+    ![Name your space](images/19-new-space-name.png)
+
+ 
+
+1. Enable the **Launch browser** checkbox.
+1. Paste in the URL of the site (this should be the web site's public URL running in your cluster).
+1. Prefix the URL with the name of the space and `.s.` so that the format is `http://{yourspace}.s.{original URL}`. 
+
+    ![Prefixing site URL with space name](images/20-launch-url-with-space.png)
+
+    >  By putting in the name of your space with a `.s.` prior to the original URL, all the HTTP calls to the Hotels REST API will be routed to the container running in your own personal Dev Space. 
+
+1. Select **Azure Dev Spaces** from the debug menu. 
+
+    ![Azure Dev Space debugging](images/21-change-debug-target.png)
+
+
+1. Hit F5 to start the debugger (or click the toolbar button in Visual Studio). 
+    
+    ![Site running](images/23-search-during-debug.png)
+
+    > Now the app will be compiled, then built into a Docker image. That image will then be published up into AKS and initialized in a namespace named with your Azure Dev Space name. Then, the browser will open to the public web site. The URL of the site will include a prefix, however, that will be passed through when REST API calls are made to the Hotels API. Since that prefix is coming through on the URL, Dev Spaces knows that means to route traffic to the Hotels container running in your personal dev space, where you've got the debugger attached. 
+
+1. Once the site opens, zoom in on the URL to show the Dev Space prefix. 
+1. Scroll down and search for **Seattle** in the city search box. 
+1. In a moment, Visual Studio should obtain focus and the debugger should stop on the line with the breakpoint. 
+    
+    ![Search for Seattle](images/24-breakpoint-hit.png)
+
+    >  Now, when you do the search, the HTTP call will be sent to an instance of the Hotels service you are actively debugging. You can see the code running in the debugger, and all the watches and locals show up. You can see right away that the search hit the database and found a result for "Seattle." 
+
+     You can hit F5 again to let the code continue running. 
+    
+    ![Success](images/25-search-works.png)
+
+    Now, the search is working. You are ready to commit your code, and you were able to find and fix  bug in minutes. 
+
+    > You can see that with Azure Kubernetes Service, developers will get the best end-to-end experience in the industry for building apps in containers using Kubernetes. Using the Container Health Monitoring you’ll have deep telemetry on how the code is running in your AKS cluster. 
+
+    > When issues arise, you’ll use the integrated Azure Dev Spaces in Visual Studio and VS Code to build and debug your applications in your own spaces, without messing with teammate or production code, and without having to spend days getting up and running. 
+
+  
