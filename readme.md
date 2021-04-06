@@ -1,4 +1,4 @@
-# SmartHotel360-AKS- DevSpaces
+# SmartHotel360-AKS- DevSpaces demo
 
 ## Overview
 **SmartHotel360** is a fictitious smart hospitality company showcasing the future of connected travel.
